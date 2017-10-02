@@ -18,8 +18,8 @@ import tempfile
 import traceback
 import zipfile
 
-import SimpleHTTPServer
-import SocketServer
+import http.server
+import socketserver
 
 AGENT_VERSION = "0.7"
 AGENT_FEATURES = [
@@ -29,7 +29,7 @@ AGENT_FEATURES = [
 sys.stdout = io.BytesIO()
 sys.stderr = io.BytesIO()
 
-class MiniHTTPRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
+class MiniHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     server_version = "Cuckoo Agent"
 
     def do_GET(self):
@@ -60,12 +60,12 @@ class MiniHTTPRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
         # handle. This check detects when there is no available data rather
         # than getting a hard exception trying to do so.
         if form.list:
-            for key in form.keys():
+            for key in list(form.keys()):
                 value = form[key]
                 if value.filename:
                     request.files[key] = value.file
                 else:
-                    request.form[key] = value.value.decode("utf8")
+                    request.form[key] = value.value
 
         if "client_ip" not in state or request.client_ip == state["client_ip"]:
             self.httpd.handle(self)
@@ -83,7 +83,7 @@ class MiniHTTPServer(object):
         }
 
     def run(self, host="0.0.0.0", port=8000):
-        self.s = SocketServer.TCPServer((host, port), self.handler)
+        self.s = socketserver.TCPServer((host, port), self.handler)
         self.s.allow_reuse_address = True
         self.s.serve_forever()
 
@@ -108,7 +108,7 @@ class MiniHTTPServer(object):
         obj.end_headers()
 
         if isinstance(ret, jsonify):
-            obj.wfile.write(ret.json())
+            obj.wfile.write(bytes(ret.json(),encoding="utf8"))
         elif isinstance(ret, send_file):
             ret.write(obj.wfile)
 
@@ -232,7 +232,7 @@ def do_mkdir():
     if "dirpath" not in request.form:
         return json_error(400, "No dirpath has been provided")
 
-    mode = int(request.form.get("mode", 0777))
+    mode = int(request.form.get("mode", '0777'))
 
     try:
         os.makedirs(request.form["dirpath"], mode=mode)
